@@ -4,8 +4,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
+from django.shortcuts import render
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
+import uuid
+from django.shortcuts import redirect
+from communications.models import Conversation
 from communications.services import ChatService
 
 logger = logging.getLogger("twilio_whatsapp")
@@ -71,3 +75,114 @@ class TwilioWebhookView(APIView):
         twiml.message(f"Hello back user, you said: {body_text}")
         
         return HttpResponse(str(twiml), content_type="application/xml")
+
+
+class ChatCreateAPIView(APIView):
+    """
+    Crea una nueva conversación de prueba con un número generado al azar
+    y retorna los datos de la conversación en JSON.
+    """
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        session_id = uuid.uuid4().hex
+        conversation = ChatService.get_or_create_conversation(
+            phone_number=session_id,
+            channel='WEB'
+        )
+        return Response({
+            "status": "success",
+            "conversation_id": conversation.id,
+            "phone_number": conversation.phone_number
+        }, status=status.HTTP_201_CREATED)
+
+class ChatDetailAPIView(APIView):
+    """
+    Retorna los detalles de la conversación y sus mensajes en formato JSON.
+    """
+    permission_classes = []
+
+    def get(self, request, conversation_id, *args, **kwargs):
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+            messages = conversation.messages.all().order_by('created_at')
+            return Response({
+                "status": "success",
+                "conversation_id": conversation.id,
+                "phone_number": conversation.phone_number,
+                "messages": [
+                    {
+                        "id": msg.id,
+                        "sender": msg.sender,
+                        "message": msg.message,
+                        "created_at": msg.created_at.isoformat()
+                    } for msg in messages
+                ]
+            }, status=status.HTTP_200_OK)
+        except Conversation.DoesNotExist:
+            return Response({"error": "La conversación no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+class SimulateBotMessageView(APIView):
+    """
+    Endpoint para simular el envío de un mensaje por parte del BOT.
+    Útil para probar el flujo de WebSockets desde Postman.
+    """
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        conversation_id = request.data.get('conversation_id')
+        message = request.data.get('message', 'Este es un mensaje de prueba desde el BOT.')
+        
+        if not conversation_id:
+            return Response({"error": "conversation_id es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            msg = ChatService.add_message_by_id(
+                conversation_id=conversation_id,
+                sender='BOT',
+                message=message
+            )
+            return Response({
+                "status": "success",
+                "message_id": msg.id,
+                "message": msg.message,
+                "sender": msg.sender
+            }, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error simulando mensaje BOT: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SimulateUserMessageView(APIView):
+    """
+    Endpoint para simular el envío de un mensaje por parte del USUARIO.
+    Útil para probar el flujo de WebSockets y hooks desde Postman.
+    """
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        conversation_id = request.data.get('conversation_id')
+        message = request.data.get('message', 'Este es un mensaje de prueba desde el USUARIO.')
+        
+        if not conversation_id:
+            return Response({"error": "conversation_id es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            msg = ChatService.add_message_by_id(
+                conversation_id=conversation_id,
+                sender='USER',
+                message=message
+            )
+            return Response({
+                "status": "success",
+                "message_id": msg.id,
+                "message": msg.message,
+                "sender": msg.sender
+            }, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error simulando mensaje USER: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

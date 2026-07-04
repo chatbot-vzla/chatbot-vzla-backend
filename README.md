@@ -202,27 +202,50 @@ Dado que el proyecto incluye `channels`, eventualmente configuraremos conexiones
 
 ---
 
-## 🐳 Docker (Recomendado)
+## 🐳 Docker y Despliegue
 
-Si prefieres no lidiar con entornos virtuales y dependencias locales, el proyecto está completamente dockerizado. Solo necesitas tener instalado **Docker** y **Docker Compose**.
+El proyecto está completamente dockerizado y preparado tanto para desarrollo local como para producción. Utiliza **Docker Compose** para orquestar la aplicación, la base de datos (Supabase remoto), Redis y un Proxy Inverso (Nginx).
 
-### 1. Levantar el Proyecto con Docker
-Abre tu terminal en la carpeta del proyecto y ejecuta:
+### 1. Script de Inicio (`start.sh`)
+
+Para simplificar el arranque de los contenedores y la configuración del entorno, hemos creado el script `start.sh`. Este script actualiza automáticamente tu archivo `.env` y levanta los servicios.
+
+**Para Desarrollo Local:**
 ```bash
-docker compose up --build
+./start.sh dev
 ```
-Esto construirá la imagen, instalará las dependencias y arrancará el servidor. Podrás acceder a `http://127.0.0.1:8000/`.
+Esto configurará `MODE=dev` y `DEBUG=True` en tu `.env` y levantará la aplicación de forma local.
 
-### 2. Ejecutar Comandos de Django en Docker
-Para correr comandos como las migraciones o crear superusuarios dentro del contenedor, usa `docker compose exec`:
+**Para Producción:**
+En producción, es obligatorio proporcionar tu nombre de dominio para que Nginx y Certbot puedan generar los certificados SSL (HTTPS).
+```bash
+./start.sh prod midominio.com
+```
+Esto configurará `MODE=production`, `DEBUG=False`, y `DOMAIN=midominio.com` en tu `.env` antes de levantar los contenedores.
 
-- **Aplicar Migraciones:**
-  ```bash
-  docker compose exec backend python manage.py migrate
-  ```
+### 2. Base de Datos (Supabase / PostgreSQL)
+
+El proyecto está configurado para conectarse a **Supabase** usando su Connection Pooler (puerto 6543) por compatibilidad con redes IPv4.
+Todas las credenciales se manejan en el archivo `.env`. Si necesitas cambiar tu contraseña o base de datos, modifica las variables `DB_HOST`, `DB_PORT`, `DB_USER` y `DB_PASSWORD` allí.
+> **Nota:** Ya no necesitas ejecutar `makemigrations` o `migrate` manualmente. El contenedor de Django usa un `entrypoint.sh` que ejecuta las migraciones automáticamente cada vez que arranca.
+
+### 3. Nginx (Proxy Inverso) y SSL
+
+El tráfico HTTP y HTTPS es manejado por el servicio **Nginx**.
+- La carpeta `nginx/` contiene las configuraciones base.
+- Si inicias en modo `dev`, Nginx servirá tráfico HTTP estándar.
+- Si inicias en modo `production` (y configuras la variable `EMAIL` en tu `.env`), **Certbot** se encargará de pedir un certificado SSL a Let's Encrypt para tu `DOMAIN`, y Nginx pasará a usar la configuración HTTPS automáticamente.
+- **WebSockets:** Nginx ya está configurado para permitir `Upgrade` headers, lo que garantiza que los WebSockets de Django Channels (Daphne) funcionen sin problemas a través del proxy.
+
+### 4. Ejecutar Comandos de Django en Docker
+
+Para correr comandos interactivos o crear superusuarios dentro del contenedor, usa `docker compose exec`:
+
 - **Crear Superusuario:**
   ```bash
   docker compose exec backend python manage.py createsuperuser
   ```
-
-*(Nota: Como estamos usando volúmenes, cualquier cambio que hagas en tu código local se reflejará automáticamente dentro del contenedor sin necesidad de reconstruir la imagen, gracias al recargo automático de Django).*
+- **Abrir Shell de Django:**
+  ```bash
+  docker compose exec backend python manage.py shell
+  ```

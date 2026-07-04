@@ -23,8 +23,15 @@ RUN pip install --upgrade pip && \
 # Copia el resto del código del proyecto
 COPY . /app/
 
+# Hacer ejecutable el script de entrada
+RUN chmod +x /app/entrypoint.sh
+
 # Expone el puerto 8000 (donde corre Django por defecto)
 EXPOSE 8000
 
+# Script de entrada para migraciones automáticas
+ENTRYPOINT ["/app/entrypoint.sh"]
+
 # Comando para ejecutar el servidor de desarrollo
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+

@@ -12,6 +12,8 @@ services:
     environment:
       - DEBUG=1
       - REDIS_URL=redis://redis:6379/1
+    env_file:
+      - .env
     depends_on:
       - redis
 
@@ -19,4 +21,41 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+  nginx:
+    image: nginx:1.13
+    restart: on-failure
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx-dev.conf:/etc/nginx/templates/nginx-dev.conf.template
+      - ./nginx/nginx-http.conf:/etc/nginx/templates/nginx-http.conf.template
+      - ./nginx/nginx-https.conf:/etc/nginx/templates/nginx-https.conf.template
+      - ./nginx/startnginx.sh:/startnginx.sh
+      - ./backend/static_root:/usr/src/app/static_root
+      - ./backend/media:/usr/src/app/media
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - backend
+    command: >
+      /bin/bash -c " chmod +x /startnginx.sh && /startnginx.sh "
+    env_file: .env
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: /bin/sh
+    command: >
+      -c ' if [ "$MODE" = "production" ]; then
+        trap exit TERM; certbot certonly --webroot -w /var/www/certbot --keep-until-expiring --email ${EMAIL} -d ${DOMAIN} --agree-tos; sleep infinity;
+      fi'
+    env_file:
+      - .env
+    depends_on:
+      - nginx
+
 
