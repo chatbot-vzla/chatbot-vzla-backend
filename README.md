@@ -197,8 +197,9 @@ Ahora, al acceder a `http://127.0.0.1:8000/api/history/` verás el listado de me
 ---
 
 ## ⚡ Conexión con WebSockets (Django Channels)
-Dado que el proyecto incluye `channels`, eventualmente configuraremos conexiones WebSockets para chat en tiempo real en lugar de polling HTTP.
-- Toda la configuración de enrutamiento asíncrono se realiza configurando `config/asgi.py` y creando archivos de tipo `consumers.py` (los equivalentes asíncronos a las `views.py` clásicas).
+Dado que el proyecto incluye `channels`, ahora las rutas WebSocket aceptan tanto IDs numéricos como UUIDs para el identificador de conversación.
+- El patrón de ruta en `backend/communications/routing.py` pasó de `r'ws/chat/(?P<conversation_id>\d+)/$'` a `r'ws/chat/(?P<conversation_id>[^/]+)/$'` para soportar UUIDs generados por el frontend.
+- El `ChatConsumer` ahora crea o recupera una conversación automáticamente cuando el ID es un UUID y envía una respuesta simulada del bot con el rol `SYSTEM` después de recibir un mensaje de `USER`.
 
 ---
 
