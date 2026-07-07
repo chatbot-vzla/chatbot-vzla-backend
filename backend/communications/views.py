@@ -68,12 +68,84 @@ class TwilioWebhookView(APIView):
             )
         except Exception as e:
             logger.error(f"Error procesando mensaje en ChatService: {str(e)}")
-            # Continuamos para responder a Twilio de todas formas y evitar reintentos continuos del webhook
+            return Response("Error processing message", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 4. Generar respuesta inline con TwiML (Echo de prueba)
+        # 4. State Machine, Validation & Escape Hatches
+        body_upper = body_text.strip().upper()
+        reply = ""
+
+        # Global escape hatches
+        if body_upper == 'CANCELAR':
+            conversation.bot_state = 'IDLE'
+            conversation.session_data = {}
+            conversation.save()
+            reply = "Operación cancelada. Puede iniciar de nuevo enviando cualquier mensaje."
+        elif body_upper == 'AYUDA':
+            conversation.status = 'PENDING_REVIEW'
+            conversation.save()
+            reply = "Un operador se pondrá en contacto con usted pronto."
+        else:
+            # State routing
+            state = conversation.bot_state
+            if state == 'IDLE':
+                reply = "Bienvenido. Por favor ingrese el nombre del sujeto."
+                conversation.bot_state = 'AWAITING_NAME'
+                conversation.save()
+            elif state == 'AWAITING_NAME':
+                session_data = conversation.session_data or {}
+                session_data['name'] = body_text.strip()
+                conversation.session_data = session_data
+                conversation.bot_state = 'AWAITING_ID'
+                conversation.save()
+                reply = "Ahora ingrese su cédula."
+            elif state == 'AWAITING_ID':
+                import re
+                numbers = re.sub(r'\D', '', body_text)
+                if len(numbers) >= 6:
+                    session_data = conversation.session_data or {}
+                    session_data['id_card'] = body_text.strip()
+                    
+                    from subjects.models import MissingPerson
+                    from core.models import Case
+                    
+                    existing_person = MissingPerson.objects.filter(document_number=session_data['id_card']).first()
+                    if existing_person:
+                        conversation.case = existing_person.case
+                    else:
+                        new_case = Case.objects.create()
+                        MissingPerson.objects.create(
+                            case=new_case,
+                            document_number=session_data['id_card'],
+                            first_name=session_data.get('name', 'Desconocido')
+                        )
+                        conversation.case = new_case
+
+                    conversation.session_data = session_data
+                    conversation.bot_state = 'COMPLETED'
+                    conversation.save()
+                    reply = "Gracias. Hemos registrado los datos."
+                else:
+                    reply = "La cédula debe contener números. Por favor, intente de nuevo."
+            elif state == 'COMPLETED':
+                reply = "El reporte ya fue completado. Gracias."
+            else:
+                reply = "Estado desconocido. Reiniciando."
+                conversation.bot_state = 'IDLE'
+                conversation.session_data = {}
+                conversation.save()
+
+        # Log bot reply
+        try:
+            ChatService.add_message(
+                conversation=conversation,
+                sender='SYSTEM',
+                message=reply
+            )
+        except Exception as e:
+            logger.error(f"Error procesando respuesta del bot en ChatService: {str(e)}")
+
         twiml = MessagingResponse()
-        twiml.message(f"Hello back user, you said: {body_text}")
-        
+        twiml.message(reply)
         return HttpResponse(str(twiml), content_type="application/xml")
 
 

@@ -2,9 +2,7 @@ from django.db import models
 
 class Conversation(models.Model):
     CHANNEL_CHOICES = [
-        ('WHATSAPP', 'WhatsApp'),
-        ('TELEGRAM', 'Telegram'),
-        ('WEB', 'Web Chat'),
+        ('WHATSAPP', 'WhatsApp')
     ]
     STATUS_CHOICES = [
         ('ACTIVE', 'Activa'),
@@ -23,6 +21,8 @@ class Conversation(models.Model):
     phone_number = models.CharField(max_length=50)
     channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES, default='WHATSAPP')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ACTIVE')
+    bot_state = models.CharField(max_length=50, default='IDLE', help_text="Estado actual en el flujo del menú")
+    session_data = models.JSONField(default=dict, blank=True, help_text="Respuestas parciales del reportante")
     started_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

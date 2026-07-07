@@ -56,6 +56,7 @@ certbot/www/*
 *.swo
 *~
 .DS_Store
+docs/
 
 # logs
 logs/
